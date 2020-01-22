@@ -10,19 +10,19 @@ References:
 
 Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2019, June). BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers) (pp. 4171-4186).
 """
-import os
+import sys,os
 import zipfile
 import json
+import pickle
 import torch
+from transformers import BertConfig
 from unidecode import unidecode
-
 from convlab.lib.file_util import cached_path
 from convlab.modules.nlu.nlu import NLU
 from convlab.modules.nlu.multiwoz.bert.dataloader import Dataloader
 from convlab.modules.nlu.multiwoz.bert.jointBERT import JointBERT
 from convlab.modules.nlu.multiwoz.bert.multiwoz.postprocess import recover_intent
 from convlab.modules.nlu.multiwoz.bert.multiwoz.preprocess import preprocess
-import spacy
 
 
 class BERTNLU(NLU):
@@ -59,6 +59,8 @@ class BERTNLU(NLU):
         print('intent num:', len(intent_vocab))
         print('tag num:', len(tag_vocab))
 
+        bert_config = BertConfig.from_pretrained(config['model']['pretrained_weights'])
+
         best_model_path = os.path.join(output_dir, 'pytorch_model.bin')
         if not os.path.exists(best_model_path):
             if not os.path.exists(output_dir):
@@ -69,14 +71,13 @@ class BERTNLU(NLU):
             archive.extractall(root_dir)
             archive.close()
         print('Load from', best_model_path)
-        model = JointBERT(config['model'], DEVICE, dataloader.tag_dim, dataloader.intent_dim)
+        model = JointBERT(bert_config, config['model'], DEVICE, dataloader.tag_dim, dataloader.intent_dim)
         model.load_state_dict(torch.load(os.path.join(output_dir, 'pytorch_model.bin'), DEVICE))
         model.to(DEVICE)
         model.eval()
 
         self.model = model
         self.dataloader = dataloader
-        self.nlp = spacy.load('en_core_web_sm')
         print("BERTNLU loaded")
 
     def parse(self, utterance, context=[]):
@@ -91,8 +92,7 @@ class BERTNLU(NLU):
             output (dict):
                 The dialog act of utterance.
         """
-        # ori_word_seq = unidecode(utterance).split()
-        ori_word_seq = [token.text for token in self.nlp(unidecode(utterance))]
+        ori_word_seq = unidecode(utterance).split()
         ori_tag_seq = ['O'] * len(ori_word_seq)
         context_seq = self.dataloader.tokenizer.encode('[CLS] ' + ' [SEP] '.join(context[-3:]))
         intents = []
@@ -119,36 +119,10 @@ class BERTNLU(NLU):
 
 if __name__ == '__main__':
     nlu = BERTNLU(mode='all', config_file='multiwoz_all_context.json', model_file='https://convlab.blob.core.windows.net/models/bert_multiwoz_all_context.zip')
-    test_utterances = [
-        "How much does it cost per night?",
-        "I am looking for somewhere to stay",
-        "is it expensive",
-        "anything in the centre",
-        "What attraction can I vidit in Cambridge?",
-        "Can you give me info about the museum?",
-        "Scott Polar is fine",
-        "what is the address of the train station?",
-        "yes please book the train tickets. ",
-        "yes book that. ",
-        "I need to leave on Monday anytime after 13:15. I need to depart from leicester",
-        "are there any hotels that are 4 star available in orlando?",
-        "are there any architecture to see in orlando?",
-        "what type of hotel is the leverton house and what area is it in?",
-        "does the worth house have free parking?",
-        "Which is the cheapest?",
-        "I would like to stay at gonville hotel.",
-        "is la raza expensive",
-        "i want a restaurant in the centre with Spanish food",
-        "what expensive spanish restaurants are in the centre",
-        "is there an expensive restaurant with spanish food in the centre",
-        "is la raza in the moderate price range",
-        "when does it leave",
-        "Yes",
-        "I'm thinking of somewhere expensive",
-        "What is the most expensive hotel?",
-        "Does it include Free Wifi?",
-        "Does University Arms Hotel have free wifi?"
-    ]
-    for utt in test_utterances:
-        print(utt)
-        print(nlu.parse(utt))
+    # test_utterances = [
+    #     ' i want to book a table in a hotel close to the city centre ; ',
+    #     ' there is a hotel close to the city centre; '
+    # ]
+    # for utt in test_utterances:
+    #     print(utt)
+    #     print(nlu.parse(utt))
